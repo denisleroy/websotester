@@ -1,4 +1,4 @@
-# ws-client
+# websotester
 
 A local, browser-based WebSocket client for poking at `ws://` and `wss://` servers, ideal for debugging WebSocket code.
 
@@ -13,9 +13,9 @@ A local, browser-based WebSocket client for poking at `ws://` and `wss://` serve
 ## Run
 
 ```sh
-uv run ws-client                 # http://127.0.0.1:8000/
-uv run ws-client --port 9000     # choose another port
-uv run ws-client --host 0.0.0.0  # expose on the LAN (no auth, be careful)
+uv run websotester                 # http://127.0.0.1:8000/
+uv run websotester --port 9000     # choose another port
+uv run websotester --host 0.0.0.0  # expose on the LAN (no auth, be careful)
 ```
 
 ## How it works

@@ -203,7 +203,7 @@ class Session:
 
 
 async def index(_request) -> HTMLResponse:
-    html = files("ws_client").joinpath("static/index.html").read_text(encoding="utf-8")
+    html = files("websotester").joinpath("static/index.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
 
 
