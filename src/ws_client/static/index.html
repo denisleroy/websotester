@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebSocket Client</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel-2: #1e222b; --border: #2a2f3a;
+    --text: #d7dae0; --muted: #8a919e; --accent: #4c8dff; --danger: #e5534b;
+    --ok: #3fb950; --warn: #d29922; --recv: #56d4dd; --sent: #c297ff;
+    --mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .pill {
+    font-size: 12px; padding: 2px 10px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--muted);
+  }
+  .pill.connected { color: var(--ok); border-color: var(--ok); }
+  .pill.connecting { color: var(--warn); border-color: var(--warn); }
+  .pill.offline { color: var(--danger); border-color: var(--danger); }
+  main {
+    flex: 1; min-height: 0; display: grid;
+    grid-template-columns: minmax(340px, 440px) 1fr;
+  }
+  .left {
+    padding: 16px; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 18px; overflow-y: auto;
+  }
+  section { display: flex; flex-direction: column; gap: 8px; }
+  label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  input[type=text], textarea {
+    width: 100%; background: var(--panel); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+    font-family: var(--mono); font-size: 13px;
+  }
+  input[type=text]:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 110px; }
+  .row { display: flex; gap: 8px; }
+  button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 14px; font: inherit; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .hint { font-size: 12px; color: var(--muted); }
+  #drop {
+    border: 2px dashed var(--border); border-radius: 8px; padding: 28px 12px;
+    text-align: center; color: var(--muted); cursor: pointer; transition: .15s;
+  }
+  #drop.over { border-color: var(--accent); color: var(--text); background: rgba(76,141,255,.08); }
+  #drop.disabled { opacity: .4; cursor: not-allowed; }
+  .right { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .toolbar {
+    display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+    border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  .toolbar .spacer { flex: 1; }
+  .toolbar label { text-transform: none; letter-spacing: 0; font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  #console {
+    flex: 1; overflow-y: auto; padding: 8px 12px; font-family: var(--mono); font-size: 12.5px;
+    user-select: text;
+  }
+  .entry { display: grid; grid-template-columns: 104px 72px 1fr; gap: 8px; padding: 3px 0; border-bottom: 1px solid #1a1d24; }
+  .entry .ts { color: var(--muted); }
+  .entry .tag { font-weight: 600; }
+  .entry pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
+  .entry.block pre { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; }
+  .k-request .tag { color: var(--warn); }
+  .k-response .tag { color: var(--ok); }
+  .k-recv-text .tag, .k-recv-binary .tag { color: var(--recv); }
+  .k-sent-text .tag, .k-sent-binary .tag { color: var(--sent); }
+  .k-info .tag { color: var(--muted); }
+  .k-info pre { color: var(--muted); }
+  .k-error .tag, .k-error pre { color: var(--danger); }
+  .empty { color: var(--muted); padding: 12px 0; }
+  footer {
+    border-top: 1px solid var(--border); background: var(--panel);
+    display: flex; flex-wrap: wrap; align-items: stretch;
+  }
+  .stat-group { display: flex; align-items: center; gap: 20px; padding: 10px 16px; }
+  .stat-group + .stat-group { border-left: 1px solid var(--border); }
+  .stat-group h2 {
+    margin: 0; font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .06em; min-width: 64px;
+  }
+  .stat-group.sent h2 { color: var(--sent); }
+  .stat-group.recv h2 { color: var(--recv); }
+  .stat { display: flex; flex-direction: column; }
+  .stat .label { font-size: 11px; color: var(--muted); }
+  .stat .value { font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .stat .value small { color: var(--muted); font-size: 11px; margin-left: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>WebSocket Client</h1>
+  <span id="status" class="pill">disconnected</span>
+</header>
+<main>
+  <div class="left">
+    <section>
+      <label for="url">WebSocket URL</label>
+      <input id="url" type="text" placeholder="wss://echo.websocket.org" spellcheck="false" autocomplete="off">
+      <div class="row">
+        <button id="connect" class="primary">Connect</button>
+        <button id="disconnect" class="danger" disabled>Disconnect</button>
+      </div>
+    </section>
+
+    <section>
+      <label for="message">Text frame</label>
+      <textarea id="message" placeholder="Message to send as a text frame" spellcheck="false"></textarea>
+      <div class="row">
+        <button id="send" disabled>Send text</button>
+      </div>
+      <span class="hint">Ctrl+Enter to send.</span>
+    </section>
+
+    <section>
+      <label>Binary frames</label>
+      <div id="drop" class="disabled">Drop files here, or click to choose.<br>Each file is sent as one binary frame.</div>
+      <input id="file" type="file" multiple hidden>
+    </section>
+  </div>
+
+  <div class="right">
+    <div class="toolbar">
+      <strong>Console</strong>
+      <span class="spacer"></span>
+      <label><input id="autoscroll" type="checkbox" checked> Auto-scroll</label>
+      <button id="clear">Clear</button>
+    </div>
+    <div id="console"><div class="empty">No activity yet.</div></div>
+  </div>
+</main>
+<footer>
+  <div class="stat-group sent">
+    <h2>Sent</h2>
+    <div class="stat"><span class="label">Text frames</span><span class="value" id="stat-sent-text">0</span></div>
+    <div class="stat"><span class="label">Binary frames</span><span class="value" id="stat-sent-binary">0</span></div>
+    <div class="stat"><span class="label">Total bytes</span><span class="value" id="stat-sent-bytes">0</span></div>
+  </div>
+  <div class="stat-group recv">
+    <h2>Received</h2>
+    <div class="stat"><span class="label">Text frames</span><span class="value" id="stat-recv-text">0</span></div>
+    <div class="stat"><span class="label">Binary frames</span><span class="value" id="stat-recv-binary">0</span></div>
+    <div class="stat"><span class="label">Total bytes</span><span class="value" id="stat-recv-bytes">0</span></div>
+  </div>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const els = {
+  url: $("url"), connect: $("connect"), disconnect: $("disconnect"), status: $("status"),
+  message: $("message"), send: $("send"), drop: $("drop"), file: $("file"),
+  console: $("console"), autoscroll: $("autoscroll"), clear: $("clear"),
+};
+
+const TAGS = {
+  request: "REQUEST", response: "RESPONSE", "recv-text": "RECV", "recv-binary": "RECV",
+  "sent-text": "SENT", "sent-binary": "SENT", info: "INFO", error: "ERROR",
+};
+const BLOCK_KINDS = new Set(["request", "response", "recv-text", "sent-text"]);
+const MAX_JSON_STRING = 128;  // longer string values are truncated when pretty-printing JSON
+
+// Pretty-print text if it is a JSON object or array; returns null otherwise.
+function prettyJson(text) {
+  if (!/^\s*[[{]/.test(text)) return null;
+  let value;
+  try { value = JSON.parse(text); } catch { return null; }
+  return JSON.stringify(value, (_key, v) =>
+    typeof v === "string" && v.length > MAX_JSON_STRING
+      ? `${v.slice(0, MAX_JSON_STRING)}… [${v.length.toLocaleString()} chars]`
+      : v, 2);
+}
+
+let control = null;      // local WebSocket to the Python server
+let state = "disconnected";
+
+try { els.url.value = localStorage.getItem("ws-url") || ""; } catch {}
+
+function log(kind, text, length) {
+  const empty = els.console.querySelector(".empty");
+  if (empty) empty.remove();
+  const atBottom = els.console.scrollHeight - els.console.scrollTop - els.console.clientHeight < 40;
+
+  const entry = document.createElement("div");
+  entry.className = `entry k-${kind}` + (BLOCK_KINDS.has(kind) ? " block" : "");
+  const ts = document.createElement("span");
+  ts.className = "ts";
+  ts.textContent = new Date().toLocaleTimeString([], { hour12: false }) +
+    "." + String(new Date().getMilliseconds()).padStart(3, "0");
+  const tag = document.createElement("span");
+  tag.className = "tag";
+  tag.textContent = TAGS[kind] || kind.toUpperCase();
+  const body = document.createElement("pre");
+  if (kind === "request" || kind === "response") {
+    body.textContent = text.replace(/\r\n/g, "\n").trimEnd();  // drop the CR of CRLF for display
+  } else {
+    body.textContent = text;
+  }
+  let pretty = null;
+  if (kind === "recv-text") {
+    pretty = prettyJson(text);
+    if (pretty !== null) body.textContent = pretty;
+  }
+  if (kind.endsWith("-text")) {
+    tag.textContent += " TXT";
+    body.title = `Text frame, ${length.toLocaleString()} bytes (UTF-8)` +
+      (pretty !== null ? ", JSON pretty-printed" : "");
+  } else if (kind.endsWith("-binary")) {
+    tag.textContent += " BIN";
+  }
+  entry.append(ts, tag, body);
+  els.console.append(entry);
+
+  if (els.autoscroll.checked && atBottom) els.console.scrollTop = els.console.scrollHeight;
+}
+
+// Per-connection frame and payload-byte counters, keyed like the log kinds ("sent-text", ...).
+const STAT_KEYS = ["sent-text", "sent-binary", "sent-bytes", "recv-text", "recv-binary", "recv-bytes"];
+let stats = {};
+
+function formatBytes(n) {
+  if (n < 1024) return n.toLocaleString();
+  const units = ["KiB", "MiB", "GiB"];
+  let v = n, i = -1;
+  do { v /= 1024; i++; } while (v >= 1024 && i < units.length - 1);
+  return `${n.toLocaleString()}<small>(${v.toFixed(1)} ${units[i]})</small>`;
+}
+
+function renderStats() {
+  for (const key of STAT_KEYS) {
+    const el = $(`stat-${key}`);
+    if (key.endsWith("-bytes")) el.innerHTML = formatBytes(stats[key]);
+    else el.textContent = stats[key].toLocaleString();
+  }
+}
+
+function resetStats() {
+  stats = Object.fromEntries(STAT_KEYS.map((k) => [k, 0]));
+  renderStats();
+}
+
+function countFrame(kind, length) {
+  if (!(kind in stats)) return;  // only frame events are counted
+  const direction = kind.split("-")[0];
+  stats[kind] += 1;
+  stats[`${direction}-bytes`] += length;
+  renderStats();
+}
+
+function setState(next) {
+  if (next === "disconnected" && state !== "disconnected") resetStats();
+  state = next;
+  els.status.textContent = next;
+  els.status.className = "pill " + (next === "connected" ? "connected" : next === "connecting" ? "connecting" :
+                                    next === "server offline" ? "offline" : "");
+  const serverUp = control && control.readyState === WebSocket.OPEN;
+  els.connect.disabled = !serverUp || next !== "disconnected";
+  els.url.disabled = next !== "disconnected";
+  els.disconnect.disabled = next !== "connected";
+  els.send.disabled = next !== "connected";
+  els.drop.classList.toggle("disabled", next !== "connected");
+}
+
+function openControl() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  control = new WebSocket(`${proto}//${location.host}/control`);
+  control.binaryType = "arraybuffer";
+  control.onopen = () => setState("disconnected");
+  control.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === "status") setState(msg.state);
+    else if (msg.type === "log") {
+      log(msg.kind, msg.text, msg.length);
+      countFrame(msg.kind, msg.length);
+    }
+  };
+  control.onclose = () => {
+    if (state !== "server offline") log("error", "Lost connection to the local server; retrying...");
+    setState("server offline");
+    setTimeout(openControl, 2000);
+  };
+}
+
+function sendControl(obj) {
+  if (control && control.readyState === WebSocket.OPEN) control.send(JSON.stringify(obj));
+}
+
+function connect() {
+  const url = els.url.value.trim();
+  if (!/^wss?:\/\//i.test(url)) {
+    log("error", "URL must start with ws:// or wss://");
+    return;
+  }
+  try { localStorage.setItem("ws-url", url); } catch {}
+  setState("connecting");
+  sendControl({ type: "connect", url });
+}
+
+function sendText() {
+  if (state !== "connected") return;
+  sendControl({ type: "send_text", data: els.message.value });
+}
+
+async function sendFiles(fileList) {
+  if (state !== "connected") return;
+  for (const file of fileList) {
+    const buf = await file.arrayBuffer();
+    sendControl({ type: "file_name", name: file.name });
+    control.send(buf);
+  }
+}
+
+els.connect.onclick = connect;
+els.disconnect.onclick = () => sendControl({ type: "disconnect" });
+els.url.addEventListener("keydown", (e) => { if (e.key === "Enter" && !els.connect.disabled) connect(); });
+els.send.onclick = sendText;
+els.message.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendText(); }
+});
+els.clear.onclick = () => { els.console.innerHTML = '<div class="empty">Console cleared.</div>'; };
+
+els.drop.onclick = () => { if (state === "connected") els.file.click(); };
+els.file.onchange = () => { sendFiles([...els.file.files]); els.file.value = ""; };
+for (const type of ["dragenter", "dragover"]) {
+  els.drop.addEventListener(type, (e) => {
+    e.preventDefault();
+    if (state === "connected") els.drop.classList.add("over");
+    e.dataTransfer.dropEffect = state === "connected" ? "copy" : "none";
+  });
+}
+els.drop.addEventListener("dragleave", () => els.drop.classList.remove("over"));
+els.drop.addEventListener("drop", (e) => {
+  e.preventDefault();
+  els.drop.classList.remove("over");
+  sendFiles([...e.dataTransfer.files]);
+});
+// Keep a file dropped outside the zone from navigating away from the page.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+
+resetStats();
+setState("disconnected");
+openControl();
+</script>
+</body>
+</html>
